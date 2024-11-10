@@ -5,22 +5,26 @@ on:
     branches:    
       - main
 
+permissions:
+  contents: write  # Grant permissions to push tags to the repository
+
 jobs:
   Deploy-PROD:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the code in the pull request
+      # Checkout the code
       - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-            # Create server key file
-      
+
+      # Create server key file
       - name: Create server key file
         run: |
           openssl enc -nosalt -aes-256-cbc -d -in assets/server.key.enc -out assets/server.key -base64 -K "${{ secrets.DECRYPTION_KEY }}" -iv "${{ secrets.DECRYPTION_IV }}"
 
+      # Download Salesforce CLI
       - name: Download Salesforce CLI
         run: |
           wget -qO sfdx.tar.xz https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64.tar.xz
@@ -28,20 +32,19 @@ jobs:
           tar xJf sfdx.tar.xz -C sfdx --strip-components 1
           sudo mv sfdx /usr/local/lib/
           sudo ln -s /usr/local/lib/sfdx/bin/sfdx /usr/local/bin/sfdx
-        
+
       # Ensure sfdx is added to PATH
       - name: Add Salesforce CLI to PATH
         run: echo 'export PATH=$PATH:/usr/local/bin/sfdx/bin' >> $HOME/.bashrc && source $HOME/.bashrc
 
+      # Install SGD
       - name: Install SGD
         run: echo y | sfdx plugins install "sfdx-git-delta"
 
-      # Create server key file
-          
       # Authorization with DevHub
       - name: Authorize DevHub
-        run:  sfdx force:auth:jwt:grant --clientid "${{ secrets.SF_CLIENT_ID }}" --username "${{ secrets.SF_CICD_USERNAME }}" --jwtkeyfile assets/server.key --instanceurl https://login.salesforce.com
-
+        run: |
+          sfdx force:auth:jwt:grant --clientid "${{ secrets.SF_CLIENT_ID }}" --username "${{ secrets.SF_CICD_USERNAME }}" --jwtkeyfile assets/server.key --instanceurl https://login.salesforce.com
 
       # Delta deploy
       - name: "Delta deploy"
@@ -52,8 +55,8 @@ jobs:
           cat package/package.xml
           echo "--- Delta Deploy ---"
           sfdx force:source:deploy -x package/package.xml -w 30 -u ${{ secrets.SF_CICD_USERNAME }}
-      
-      
+
+      # Add Tag on Success
       - name: Tag and Push
         if: success()
         run: |
@@ -72,8 +75,9 @@ jobs:
           echo "Creating new tag: $TAG_NAME"
 
           # Configure Git user and create the new tag
-          git config user.name "sanketmohanty09"
-          git config user.email "sanketmohanty09@gmail.com"
-          git tag -a "$TAG_NAME" -m "Deployed to PROD"
-          git push origin "$TAG_NAME"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # Use the GITHUB_TOKEN to push the tag
+          git tag -a "$TAG_NAME" -m "Deployed to PROD"
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} "$TAG_NAME"

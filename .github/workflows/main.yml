@@ -30,7 +30,7 @@ jobs:
           sudo ln -s /usr/local/lib/sfdx/bin/sfdx /usr/local/bin/sfdx
 
       - name: Install SGD
-        run: echo y | sf plugins install "sfdx-git-delta@${{ vars.SGD_VERSION }}"
+        run: echo y | sf plugins install "sfdx-git-delta"
         
       # Ensure sfdx is added to PATH
       - name: Add Salesforce CLI to PATH

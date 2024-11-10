@@ -10,29 +10,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Install Salesforce CLI
-      - name: Install Salesforce CLI
-        run: |
-          npm install sf-cli --global
-          sf --version
-
-      # Install sf-Git-Delta plugin
-      - name: Install plugins
-        run: |
-          echo y | sf plugins:install sf-git-delta
-          sf plugins
-
-      # Install utilities
-      - name: Install utilities
-        run: |
-          pip install yq
-          xq --version
-
       # Checkout the code in the pull request
       - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+      
+      - name: Download Salesforce CLI
+        run: |
+          wget -qO sfdx.tar.xz https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64.tar.xz
+          mkdir sfdx
+          tar xJf sfdx.tar.xz -C sfdx --strip-components 1
+          sudo mv sfdx /usr/local/lib/
+          sudo ln -s /usr/local/lib/sfdx/bin/sfdx /usr/local/bin/sfdx
+        
+      # Ensure sfdx is added to PATH
+      - name: Add Salesforce CLI to PATH
+        run: echo 'export PATH=$PATH:/usr/local/bin/sfdx/bin' >> $HOME/.bashrc && source $HOME/.bashrc
 
       # Create server key file
       - name: Create server key file

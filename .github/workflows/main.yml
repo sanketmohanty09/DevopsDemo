@@ -36,13 +36,13 @@ jobs:
           
       # Authorization with DevHub
       - name: Authorize DevHub
-        run:  sf force:auth:jwt:grant --clientid "${{ secrets.SF_CLIENT_ID }}" --username "${{ secrets.SF_CICD_USERNAME }}" --jwtkeyfile server_main.key --instanceurl https://login.salesforce.com
+        run:  sfdx force:auth:jwt:grant --clientid "${{ secrets.SF_CLIENT_ID }}" --username "${{ secrets.SF_CICD_USERNAME }}" --jwtkeyfile server_main.key --instanceurl https://login.salesforce.com
 
 
       # Delta deploy
       - name: "Delta deploy"
         run: |
-          sf sgd:source:delta --to "HEAD" --from "HEAD~1" --output "." -i .forceignore
+          sfdx sgd:source:delta --to "HEAD" --from "HEAD~1" --output "." -i .forceignore
           echo "--- package.xml generated with added and modified metadata ---"
           cat package/package.xml
           echo
@@ -52,9 +52,9 @@ jobs:
           echo
           echo "--- Delta Deploy ---"
           if [ -z "$APEX_CLASSES" ]; then
-            sf force:source:deploy -x package/package.xml -w 30
+            sfdx force:source:deploy -x package/package.xml -w 30
           else
-            sf force:source:deploy -x package/package.xml -w 30 -l RunSpecifiedTests -r "$APEX_CLASSES"
+            sfdx force:source:deploy -x package/package.xml -w 30 -l RunSpecifiedTests -r "$APEX_CLASSES"
           fi
 
             # Add Tag on Success

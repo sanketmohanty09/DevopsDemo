@@ -49,6 +49,7 @@ jobs:
       # Delta deploy
       - name: "Delta deploy"
         run: |
+          git checkout PROD/3
           sfdx sgd:source:delta --to "HEAD" --from "HEAD~1" --output "." -i .forceignore
           echo "--- package.xml generated with added and modified metadata ---"
           cat package/package.xml

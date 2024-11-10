@@ -50,11 +50,6 @@ jobs:
           sfdx sgd:source:delta --to "HEAD" --from "HEAD~1" --output "." -i .forceignore
           echo "--- package.xml generated with added and modified metadata ---"
           cat package/package.xml
-          echo
-          echo "--- Apex Tests to be executed ---"
-          #export APEX_CLASSES=$(xq . < package/package.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(",")' -r)
-          echo $APEX_CLASSES
-          echo
           echo "--- Delta Deploy ---"
           sfdx force:source:deploy -x package/package.xml -w 30 -u ${{ secrets.SF_CICD_USERNAME }}
       

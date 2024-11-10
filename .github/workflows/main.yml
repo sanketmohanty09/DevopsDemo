@@ -34,7 +34,7 @@ jobs:
         run: echo 'export PATH=$PATH:/usr/local/bin/sfdx/bin' >> $HOME/.bashrc && source $HOME/.bashrc
 
       - name: Install SGD
-        run: echo y | sf plugins install "sfdx-git-delta"
+        run: echo y | sfdx plugins install "sfdx-git-delta"
 
       # Create server key file
           

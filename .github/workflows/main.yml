@@ -55,13 +55,7 @@ jobs:
           echo $APEX_CLASSES
           echo
           echo "--- Delta Deploy ---"
-          if [ -z "$APEX_CLASSES" ]; then
-            sfdx force:source:deploy -x package/package.xml -w 30 -u ${{ secrets.SF_CICD_USERNAME }}
-          else
-            sfdx force:source:deploy -x package/package.xml -w 30 -u ${{ secrets.SF_CICD_USERNAME }}
-          fi
-
-            # Add Tag on Success
+          sfdx force:source:deploy -x package/package.xml -w 30 -u ${{ secrets.SF_CICD_USERNAME }}
       
       
       - name: Tag and Push

@@ -5,3 +5,4 @@ public with sharing class GitHubAuthCallout_NoCredentials_Test {
         GitHubAuthCallout_NoCredential.callGitHub();
     }
 }
+

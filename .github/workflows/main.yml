@@ -53,7 +53,7 @@ jobs:
           LATEST_TAG=$(git tag --list "PROD/*" --sort=-v:refname | head -n 1)
           echo "Using $LATEST_TAG"
           git checkout $LATEST_TAG
-          sfdx sgd:source:delta --from "HEAD" --output "." -i .forceignore
+          sfdx sgd:source:delta --from "HEAD~1" --output "." -i .forceignore
           echo "--- package.xml generated with added and modified metadata ---"
           cat package/package.xml
           echo "--- Delta Deploy ---"

@@ -1,1 +1,91 @@
+name: Deployment to PROD
+
+on:
+  push:
+    branches:    
+      - main
+
+jobs:
+  Deploy-PROD:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Install Salesforce CLI
+      - name: Install Salesforce CLI
+        run: |
+          npm install sf-cli --global
+          sf --version
+
+      # Install sf-Git-Delta plugin
+      - name: Install plugins
+        run: |
+          echo y | sf plugins:install sf-git-delta
+          sf plugins
+
+      # Install utilities
+      - name: Install utilities
+        run: |
+          pip install yq
+          xq --version
+
+      # Checkout the code in the pull request
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      # Create server key file
+      - name: Create server key file
+        run: |
+          touch server.key
+          echo -e "${{ secrets.SF_CICD_SERVERKEY }}" >> server_main.key  
+          
+      # Authorization with DevHub
+      - name: Authorize DevHub
+        run:  sf force:auth:jwt:grant --clientid "${{ secrets.SF_CLIENT_ID }}" --username "${{ secrets.SF_CICD_USERNAME }}" --jwtkeyfile server_main.key --instanceurl https://login.salesforce.com
+
+
+      # Delta deploy
+      - name: "Delta deploy"
+        run: |
+          sf sgd:source:delta --to "HEAD" --from "HEAD~1" --output "." -i .forceignore
+          echo "--- package.xml generated with added and modified metadata ---"
+          cat package/package.xml
+          echo
+          echo "--- Apex Tests to be executed ---"
+          export APEX_CLASSES=$(xq . < package/package.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(",")' -r)
+          echo $APEX_CLASSES
+          echo
+          echo "--- Delta Deploy ---"
+          if [ -z "$APEX_CLASSES" ]; then
+            sf force:source:deploy -x package/package.xml -w 30
+          else
+            sf force:source:deploy -x package/package.xml -w 30 -l RunSpecifiedTests -r "$APEX_CLASSES"
+          fi
+
+            # Add Tag on Success
+      
+      
+      - name: Tag and Push
+        if: success()
+        run: |
+          # Fetch all tags
+          git fetch --tags
+
+          # Get the latest tag with prefix "PROD/" and increment it
+          LATEST_TAG=$(git tag --list "PROD/*" --sort=-v:refname | head -n 1)
+          if [ -z "$LATEST_TAG" ]; then
+            TAG_NAME="PROD/1"
+          else
+            TAG_NUMBER=${LATEST_TAG#PROD/}
+            TAG_NAME="PROD/$((TAG_NUMBER + 1))"
+          fi
+
+          echo "Creating new tag: $TAG_NAME"
+
+          # Configure Git user and create the new tag
+          git config user.name "sanketmohanty09"
+          git config user.email "sanketmohanty09@gmail.com"
+          git tag -a "$TAG_NAME" -m "Deployed to PROD"
+          git push origin "$TAG_NAME"
 

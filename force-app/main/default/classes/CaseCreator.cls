@@ -9,3 +9,4 @@ public with sharing class CaseCreator {
     insert newCase;
   }
 }
+

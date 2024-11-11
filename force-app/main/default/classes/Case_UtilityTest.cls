@@ -15,6 +15,9 @@ public class Case_UtilityTest {
         // Call the updateCaseSubject method
         Case_Utility.updateCaseSubject(caseList);
         
+        // Update the cases to commit changes to the database
+        update caseList;
+        
         // Retrieve and verify that the subject was updated
         List<Case> updatedCases = [SELECT Id, Subject FROM Case WHERE Id IN :caseList];
         for (Case cs : updatedCases) {

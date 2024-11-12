@@ -58,9 +58,10 @@ jobs:
           git fetch --tags
           LATEST_TAG=$(git tag --list "PROD/*" --sort=-v:refname | head -n 1)
           echo "Using $LATEST_TAG"
-          sfdx sgd:source:delta --from $LATEST_TAG --output "." -i .forceignore
+          sf sgd source delta --from $LATEST_TAG --output "." -i .forceignore
           echo "--- package.xml generated with added and modified metadata ---"
           cat package/package.xml
+          echo
           if grep -q '<types>' ./package/package.xml;then
             echo
             echo "--- Apex Tests to be executed ---"
@@ -69,9 +70,9 @@ jobs:
             echo
             echo "--- Delta Deploy ---"
             if [ -z "$APEX_CLASSES" ]; then
-              sfdx force:source:deploy -x package/package.xml -w 30 -u ${{ secrets.SF_CICD_USERNAME }}
+              sf project deploy start -x package/package.xml -w 30 -u ${{ secrets.SF_CICD_USERNAME }}
             else
-              sfdx force:source:deploy -x package/package.xml -w 30 -l RunSpecifiedTests -r "$APEX_CLASSES" -u ${{ secrets.SF_CICD_USERNAME }}
+              sf project deploy start -x package/package.xml -w 30 -l RunSpecifiedTests -r "$APEX_CLASSES" -u ${{ secrets.SF_CICD_USERNAME }}
             fi
           else
             echo "----No Changes Found Skipping the Deployment----"

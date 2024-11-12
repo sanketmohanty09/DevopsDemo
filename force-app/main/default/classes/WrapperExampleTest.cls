@@ -17,3 +17,4 @@ public class WrapperExampleTest {
         System.assertEquals('Buddy', wrapper.dogsName, 'The dogsName field was not set correctly.');
     }
 }
+

@@ -45,7 +45,7 @@ jobs:
 
       # Install SGD
       - name: Install SGD
-        run: echo y | sfdx plugins install "sfdx-git-delta"
+        run: echo y | sf plugins install "sfdx-git-delta"
 
       # Authorization with DevHub
       - name: Authorize DevHub

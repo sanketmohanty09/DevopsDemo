@@ -55,7 +55,7 @@ jobs:
           if grep -q '<types>' ./package/package.xml;then
             echo
             echo "--- Apex Tests to be executed ---"
-            export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(",")' -r)
+            export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(" ")' -r)
             echo $APEX_CLASSES
             echo
             echo "--- Delta Deploy ---"
@@ -63,7 +63,7 @@ jobs:
               sf project deploy start -x package/package.xml -w 30 -o ${{ secrets.SF_CICD_USERNAME }}
               sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
             else
-               sfdx force:source:deploy -x package/package.xml -w 30 -l RunSpecifiedTests -r "$APEX_CLASSES" -u ${{ secrets.SF_CICD_USERNAME }}
+              sf project deploy start -x package/package.xml -w 30 -l RunSpecifiedTests --tests "$APEX_CLASSES" -o ${{ secrets.SF_CICD_USERNAME }}
               sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
             fi
           else

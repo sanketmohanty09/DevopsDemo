@@ -40,7 +40,7 @@ jobs:
       # Authorization with DevHub
       - name: Authorize DevHub
         run: |
-          sfdx force:auth:jwt:grant --clientid "${{ secrets.SF_CLIENT_ID }}" --username "${{ secrets.SF_CICD_USERNAME }}" --jwtkeyfile assets/server.key --instanceurl https://login.salesforce.com
+          sf org login jwt --clientid "${{ secrets.SF_CLIENT_ID }}" --username "${{ secrets.SF_CICD_USERNAME }}" --jwtkeyfile assets/server.key --instanceurl https://login.salesforce.com
 
       # Delta deploy
       - name: "Delta deploy"
@@ -60,9 +60,9 @@ jobs:
             echo
             echo "--- Delta Deploy ---"
             if [ -z "$APEX_CLASSES" ]; then
-              sf project deploy start -x package/package.xml -w 30 -u ${{ secrets.SF_CICD_USERNAME }}
+              sf project deploy start -x package/package.xml -w 30 -o ${{ secrets.SF_CICD_USERNAME }}
             else
-              sf project deploy start -x package/package.xml -w 30 -l RunSpecifiedTests -r "$APEX_CLASSES" -u ${{ secrets.SF_CICD_USERNAME }}
+              sf project deploy start -x package/package.xml -w 30 -l RunSpecifiedTests -r "$APEX_CLASSES" -o ${{ secrets.SF_CICD_USERNAME }}
             fi
           else
             echo "----No Changes Found Skipping the Deployment----"

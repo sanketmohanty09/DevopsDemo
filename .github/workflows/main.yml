@@ -61,16 +61,20 @@ jobs:
           sfdx sgd:source:delta --from $LATEST_TAG --output "." -i .forceignore
           echo "--- package.xml generated with added and modified metadata ---"
           cat package/package.xml
-          echo
-          echo "--- Apex Tests to be executed ---"
-          export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(",")' -r)
-          echo $APEX_CLASSES
-          echo
-          echo "--- Delta Deploy ---"
-          if [ -z "$APEX_CLASSES" ]; then
-            sfdx force:source:deploy -x package/package.xml -w 30 -u ${{ secrets.SF_CICD_USERNAME }}
+          if grep -q '<types>' ./package/package.xml;then
+            echo
+            echo "--- Apex Tests to be executed ---"
+            export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(",")' -r)
+            echo $APEX_CLASSES
+            echo
+            echo "--- Delta Deploy ---"
+            if [ -z "$APEX_CLASSES" ]; then
+              sfdx force:source:deploy -x package/package.xml -w 30 -u ${{ secrets.SF_CICD_USERNAME }}
+            else
+              sfdx force:source:deploy -x package/package.xml -w 30 -l RunSpecifiedTests -r "$APEX_CLASSES" -u ${{ secrets.SF_CICD_USERNAME }}
+            fi
           else
-            sfdx force:source:deploy -x package/package.xml -w 30 -l RunSpecifiedTests -r "$APEX_CLASSES" -u ${{ secrets.SF_CICD_USERNAME }}
+            echo "----No Changes Found Skipping the Deployment----"
           fi
 
 

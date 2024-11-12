@@ -61,8 +61,10 @@ jobs:
             echo "--- Delta Deploy ---"
             if [ -z "$APEX_CLASSES" ]; then
               sf project deploy start -x package/package.xml -w 30 -o ${{ secrets.SF_CICD_USERNAME }}
+              sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
             else
               sf project deploy start -x package/package.xml -w 30 -l RunSpecifiedTests -r "$APEX_CLASSES" -o ${{ secrets.SF_CICD_USERNAME }}
+              sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
             fi
           else
             echo "----No Changes Found Skipping the Deployment----"

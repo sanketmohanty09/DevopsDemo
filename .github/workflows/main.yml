@@ -30,27 +30,17 @@ jobs:
         run: |
           openssl enc -nosalt -aes-256-cbc -d -in assets/server.key.enc -out assets/server.key -base64 -K "${{ secrets.DECRYPTION_KEY }}" -iv "${{ secrets.DECRYPTION_IV }}"
 
-      # Download Salesforce CLI
-      - name: Download Salesforce CLI
-        run: |
-          wget -qO sfdx.tar.xz https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64.tar.xz
-          mkdir sfdx
-          tar xJf sfdx.tar.xz -C sfdx --strip-components 1
-          sudo mv sfdx /usr/local/lib/
-          sudo ln -s /usr/local/lib/sfdx/bin/sfdx /usr/local/bin/sfdx
-
       # Ensure sfdx is added to PATH
-      - name: Add Salesforce CLI to PATH
-        run: echo 'export PATH=$PATH:/usr/local/bin/sfdx/bin' >> $HOME/.bashrc && source $HOME/.bashrc
-
+      - name: Installing Salesforce CLI
+        run: sudo npm install @salesforce/cli --global
       # Install SGD
       - name: Install SGD
-        run: echo y | sfdx plugins install "sfdx-git-delta"
+        run: echo y | sf plugins install "sfdx-git-delta"
 
       # Authorization with DevHub
       - name: Authorize DevHub
         run: |
-          sfdx force:auth:jwt:grant --clientid "${{ secrets.SF_CLIENT_ID }}" --username "${{ secrets.SF_CICD_USERNAME }}" --jwtkeyfile assets/server.key --instanceurl https://login.salesforce.com
+          sf org login jwt --clientid "${{ secrets.SF_CLIENT_ID }}" --username "${{ secrets.SF_CICD_USERNAME }}" --jwtkeyfile assets/server.key --instanceurl https://login.salesforce.com
 
       # Delta deploy
       - name: "Delta deploy"
@@ -58,20 +48,23 @@ jobs:
           git fetch --tags
           LATEST_TAG=$(git tag --list "PROD/*" --sort=-v:refname | head -n 1)
           echo "Using $LATEST_TAG"
-          sfdx sgd:source:delta --from $LATEST_TAG --output "." -i .forceignore
+          sf sgd source delta --from $LATEST_TAG --output "." -i .forceignore
           echo "--- package.xml generated with added and modified metadata ---"
           cat package/package.xml
+          echo
           if grep -q '<types>' ./package/package.xml;then
             echo
             echo "--- Apex Tests to be executed ---"
-            export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(",")' -r)
+            export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(" ")' -r)
             echo $APEX_CLASSES
             echo
             echo "--- Delta Deploy ---"
             if [ -z "$APEX_CLASSES" ]; then
-              sfdx force:source:deploy -x package/package.xml -w 30 -u ${{ secrets.SF_CICD_USERNAME }}
+              sf project deploy start -x package/package.xml -w 30 -o ${{ secrets.SF_CICD_USERNAME }}
+              sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
             else
-              sfdx force:source:deploy -x package/package.xml -w 30 -l RunSpecifiedTests -r "$APEX_CLASSES" -u ${{ secrets.SF_CICD_USERNAME }}
+              sf project deploy start -x package/package.xml -w 30 -l RunSpecifiedTests --tests "$APEX_CLASSES" -o ${{ secrets.SF_CICD_USERNAME }}
+              sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
             fi
           else
             echo "----No Changes Found Skipping the Deployment----"

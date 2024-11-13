@@ -52,7 +52,7 @@ jobs:
           echo "--- package.xml generated with added and modified metadata ---"
           cat package/package.xml
           echo
-          "flag=false" >> $GITHUB_ENV
+          echo "flag=false" >> $GITHUB_ENV
           if grep -q '<types>' ./package/package.xml;then
             echo
             echo "--- Apex Tests to be executed ---"
@@ -67,10 +67,10 @@ jobs:
               sf project deploy start -x package/package.xml -w 30 -l RunSpecifiedTests -o ${{ secrets.SF_CICD_USERNAME }} --tests $APEX_CLASSES
               sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
             fi
-            "flag=true" >> $GITHUB_ENV
+            echo "flag=true" >> $GITHUB_ENV
           else
             echo "----No Changes Found Skipping the Deployment----"
-            "flag = false" >> $GITHUB_ENV
+            echo "flag = false" >> $GITHUB_ENV
           fi
 
 

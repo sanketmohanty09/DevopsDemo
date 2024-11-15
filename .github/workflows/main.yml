@@ -78,7 +78,7 @@ jobs:
             echo "---Checking for Pre-DestructiveChanges----"
             if [ -d Sfdx-Delta/scripts/destructiveChanges/pre ]; then
               echo "---Starting with Pre-destructive Changes-----"
-              sf project deploy start --pre-destructive-changes Sfdx-Delta/scripts/destructiveChanges/pre/destructiveChanges.xml --manifest Sfdx-Delta/scripts/destructiveChanges/pre/destructiveChanges.xml
+              sf project deploy start --pre-destructive-changes Sfdx-Delta/scripts/destructiveChanges/pre/destructiveChanges.xml --manifest Sfdx-Delta/scripts/destructiveChanges/pre/destructiveChanges.xml -o ${{ secrets.SF_CICD_USERNAME }}
             else
               echo "----No Pre-DestructiveChanges found----"
             fi
@@ -137,7 +137,7 @@ jobs:
             # Run Post destructiveChanges
             if [ -d Sfdx-Delta/scripts/destructiveChanges/post ]; then
               echo "---Starting with Post-destructive Changes-----"
-              sf project deploy start --post-destructive-changes Sfdx-Delta/scripts/destructiveChanges/post/destructiveChanges.xml --manifest Sfdx-Delta/scripts/destructiveChanges/post/destructiveChanges.xml
+              sf project deploy start --post-destructive-changes Sfdx-Delta/scripts/destructiveChanges/post/destructiveChanges.xml --manifest Sfdx-Delta/scripts/destructiveChanges/post/destructiveChanges.xml -o ${{ secrets.SF_CICD_USERNAME }}
             else
               echo "----No Post-DestructiveChanges found----"
             fi

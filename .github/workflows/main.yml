@@ -21,18 +21,18 @@ jobs:
       
       - name: Install utilities
         run: |
-         pip install yq
-         xq --version
-      
+          pip install yq
+          xq --version
 
       # Create server key file
       - name: Create server key file
         run: |
           openssl enc -nosalt -aes-256-cbc -d -in assets/server.key.enc -out assets/server.key -base64 -K "${{ secrets.DECRYPTION_KEY }}" -iv "${{ secrets.DECRYPTION_IV }}"
 
-      # Ensure sfdx is added to PATH
+      # Ensure Salesforce CLI is added to PATH
       - name: Installing Salesforce CLI
         run: sudo npm install @salesforce/cli --global
+      
       # Install SGD
       - name: Install SGD
         run: echo y | sf plugins install "sfdx-git-delta"
@@ -43,45 +43,101 @@ jobs:
           sf org login jwt --clientid "${{ secrets.SF_CLIENT_ID }}" --username "${{ secrets.SF_CICD_USERNAME }}" --jwtkeyfile assets/server.key --instanceurl https://login.salesforce.com
 
       # Delta deploy
-      - name: "Delta deploy"
+      - name: Delta deploy
         run: | 
           git fetch --tags
           LATEST_TAG=$(git tag --list "PROD/*" --sort=-v:refname | head -n 1)
           echo "Using $LATEST_TAG"
-          sf sgd source delta --from $LATEST_TAG --output "." -i .forceignore
+          
+          echo "----Generating SFDX-Delta Folder----"
+          mkdir -p Sfdx-Delta
+          
+          # Copy modified files to Sfdx-Delta
+          MODIFIED_FILES=$(git diff --name-only "$LATEST_TAG" HEAD)
+          if [ -z "$MODIFIED_FILES" ]; then
+              echo "No modified files found between $LATEST_TAG and HEAD."
+              exit 0
+          fi
+          for FILE in $MODIFIED_FILES; do
+            if [ -f "$FILE" ]; then
+              mkdir -p "Sfdx-Delta/$(dirname "$FILE")"
+              cp "$FILE" "Sfdx-Delta/$FILE"
+            else
+              echo "Skipping $FILE as it is not a regular file."
+            fi
+          done
+
+          sf sgd source delta --from $LATEST_TAG --output Sfdx-Delta/ --generate-delta
+          
           echo "--- package.xml generated with added and modified metadata ---"
-          cat package/package.xml
-          echo
+          cat Sfdx-Delta/package/package.xml
+
+          # Check if deployment is needed
           echo "flag=false" >> $GITHUB_ENV
-          if grep -q '<types>' ./package/package.xml;then
-            echo
+          if grep -q '<types>' ./Sfdx-Delta/package/package.xml; then
+            echo "Changes detected, preparing deployment..."
+            
+            # Run Pre-Anonymous Apex Scripts
+            if [ -d Sfdx-Delta/scripts/apex/pre ]; then
+              echo "----Running Pre-Anonymous Apex Scripts----"
+              for filename in Sfdx-Delta/scripts/apex/pre/*.apex; do
+                if [ -f "$filename" ]; then
+                  echo "Executing $filename ..."
+                  sf apex run --file "$filename" -o ${{ secrets.SF_CICD_USERNAME }}
+                  if [ $? -ne 0 ]; then
+                    echo "Error: Failed to execute $filename"
+                    exit 1
+                  fi
+                fi
+              done
+            else
+              echo "No pre-anonymous scripts found."
+            fi
+
+            # Handle Apex Test Classes
             echo "--- Apex Tests to be executed ---"
             export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(" ")' -r)
             echo $APEX_CLASSES
-            echo
-            echo "--- Delta Deploy ---"
+
+            # Deploy metadata
+            echo "--- Metadata Deployment ---"
             if [ -z "$APEX_CLASSES" ]; then
-              sf project deploy start -x package/package.xml -w 30 -o ${{ secrets.SF_CICD_USERNAME }}
-              sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
+              sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -o ${{ secrets.SF_CICD_USERNAME }}
             else
-              sf project deploy start -x package/package.xml -w 30 -l RunSpecifiedTests -o ${{ secrets.SF_CICD_USERNAME }} --tests $APEX_CLASSES
-              sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
+              sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -l RunSpecifiedTests -o ${{ secrets.SF_CICD_USERNAME }} --tests $APEX_CLASSES
             fi
+            sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
+
+            # Run Post-Anonymous Apex Scripts
+            if [ -d Sfdx-Delta/scripts/apex/post ]; then
+              echo "----Running Post-Anonymous Apex Scripts----"
+              for filename in Sfdx-Delta/scripts/apex/post/*.apex; do
+                if [ -f "$filename" ]; then
+                  echo "Executing $filename ..."
+                  sf apex run --file "$filename" -o ${{ secrets.SF_CICD_USERNAME }}
+                  if [ $? -ne 0 ]; then
+                    echo "Error: Failed to execute $filename"
+                    exit 1
+                  fi
+                fi
+              done
+            else
+              echo "No post-anonymous scripts found."
+            fi
+
             echo "flag=true" >> $GITHUB_ENV
           else
-            echo "----No Changes Found Skipping the Deployment----"
-            echo "flag = false" >> $GITHUB_ENV
+            echo "----No Changes Found, Skipping the Deployment----"
           fi
 
+          # Cleanup
+          rm -rf Sfdx-Delta
 
       # Add Tag on Success
       - name: Tag and Push
         if: env.flag == 'true'
         run: |
-          # Fetch all tags
           git fetch --tags
-
-          # Get the latest tag with prefix "PROD/" and increment it
           LATEST_TAG=$(git tag --list "PROD/*" --sort=-v:refname | head -n 1)
           if [ -z "$LATEST_TAG" ]; then
             TAG_NAME="PROD/1"
@@ -91,11 +147,7 @@ jobs:
           fi
 
           echo "Creating new tag: $TAG_NAME"
-
-          # Configure Git user and create the new tag
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Use the GITHUB_TOKEN to push the tag
           git tag -a "$TAG_NAME" -m "Deployed to PROD"
           git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} "$TAG_NAME"

@@ -102,8 +102,8 @@ jobs:
             else
               echo "No pre-anonymous scripts found."
             fi
-            APEX_CLASS1=$(xq . < Sfdx-Delta/.runspecifiedtests | jq -r '.tests | join(" ")')
-            echo APEX_CLASS1
+            APEX_CLASS1=$(xq . < Sfdx-Delta/runspecifiedtests.yml | jq -r '.tests | join(" ")')
+            echo $APEX_CLASS1
 
             # Handle Apex Test Classes
             echo "--- Apex Tests to be executed ---"

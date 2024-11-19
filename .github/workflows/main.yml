@@ -97,11 +97,11 @@ jobs:
             
             TEST_LEVEL = "RunSpecifiedTests"
 
-            if [ "$TEST_LEVEL" = "RunSpecifiedTests" ]; then
+            if [ $TEST_LEVEL = "RunSpecifiedTests" ]; then
               export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(" ")' -r)
               echo "Tests: $APEX_CLASSES"
               sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -l RunSpecifiedTests -o ${{ secrets.SF_CICD_USERNAME }} --tests $APEX_CLASSES
-            elif [ "$TEST_LEVEL" = "RunLocalTests" ]; then
+            elif [ $TEST_LEVEL = "RunLocalTests" ]; then
               echo "--- Running all local tests ---"
               sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -l RunLocalTests -o ${{ secrets.SF_CICD_USERNAME }}
             else

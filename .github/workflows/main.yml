@@ -9,7 +9,7 @@ on:
       TEST_LEVEL:
         description: "Specify the test level (RunLocalTests, NoTestRun, RunSpecifiedTests)"
         required: false
-        default: "NoTestRun"
+        default: "RunSpecifiedTests"
 
 permissions:
   contents: write  # Grant permissions to push tags to the repository

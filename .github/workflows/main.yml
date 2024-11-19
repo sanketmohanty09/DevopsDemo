@@ -4,12 +4,6 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
-    inputs:
-      TEST_LEVEL:
-        description: "Specify the test level (RunLocalTests, NoTestRun, RunSpecifiedTests)"
-        required: false
-        default: "RunSpecifiedTests"
 
 permissions:
   contents: write  # Grant permissions to push tags to the repository
@@ -91,12 +85,9 @@ jobs:
             fi
 
             echo "Changes detected, preparing deployment..."
-            # Handle Apex Test Classes based on TEST_LEVEL
-            TEST_LEVEL="${{ github.event.inputs.TEST_LEVEL }}"
-            echo "Using test level: $TEST_LEVEL"
-            
+            # Handle Apex Test Classes based on TEST_LEVEL            
             TEST_LEVEL="RunSpecifiedTests"
-
+            echo "Using test level: $TEST_LEVEL"
             if [ $TEST_LEVEL = "RunSpecifiedTests" ]; then
               export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(" ")' -r)
               echo "Tests: $APEX_CLASSES"

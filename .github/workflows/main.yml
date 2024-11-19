@@ -2,8 +2,14 @@ name: Deployment to PROD
 
 on:
   push:
-    branches:    
+    branches:
       - main
+  workflow_dispatch:
+    inputs:
+      TEST_LEVEL:
+        description: "Specify the test level (RunLocalTests, NoTestRun, RunSpecifiedTests)"
+        required: false
+        default: "NoTestRun"
 
 permissions:
   contents: write  # Grant permissions to push tags to the repository
@@ -19,6 +25,7 @@ jobs:
         with:
           fetch-depth: 0
       
+      # Install utilities
       - name: Install utilities
         run: |
           pip install yq
@@ -83,40 +90,23 @@ jobs:
               echo "----No Pre-DestructiveChanges found----"
             fi
 
-
-
             echo "Changes detected, preparing deployment..."
-            # Run Pre-Anonymous Apex Scripts
-            if [ -d Sfdx-Delta/scripts/apex/pre ]; then
-              echo "----Running Pre-Anonymous Apex Scripts----"
-              for filename in Sfdx-Delta/scripts/apex/pre/*.apex; do
-                if [ -f "$filename" ]; then
-                  echo "Executing $filename ..."
-                  sf apex run --file "$filename" -o ${{ secrets.SF_CICD_USERNAME }}
-                  if [ $? -ne 0 ]; then
-                    echo "Error: Failed to execute $filename"
-                    exit 1
-                  fi
-                fi
-              done
-            else
-              echo "No pre-anonymous scripts found."
-            fi
-            APEX_CLASS1=$(xq . < Sfdx-Delta/runspecifiedtests.yml | jq -r '.tests | join(" ")')
-            echo $APEX_CLASS1
+            # Handle Apex Test Classes based on TEST_LEVEL
+            TEST_LEVEL="${{ github.event.inputs.TEST_LEVEL }}"
+            echo "Using test level: $TEST_LEVEL"
 
-            # Handle Apex Test Classes
-            echo "--- Apex Tests to be executed ---"
-            export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(" ")' -r)
-            echo $APEX_CLASSES
-
-            # Deploy metadata
-            echo "--- Metadata Deployment ---"
-            if [ -z "$APEX_CLASSES" ]; then
-              sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -o ${{ secrets.SF_CICD_USERNAME }}
-            else
+            if [ "$TEST_LEVEL" = "RunSpecifiedTests" ]; then
+              export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(" ")' -r)
+              echo "Tests: $APEX_CLASSES"
               sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -l RunSpecifiedTests -o ${{ secrets.SF_CICD_USERNAME }} --tests $APEX_CLASSES
+            elif [ "$TEST_LEVEL" = "RunLocalTests" ]; then
+              echo "--- Running all local tests ---"
+              sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -l RunLocalTests -o ${{ secrets.SF_CICD_USERNAME }}
+            else
+              echo "--- Skipping tests (NoTestRun) ---"
+              sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -l NoTestRun -o ${{ secrets.SF_CICD_USERNAME }}
             fi
+
             sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
 
             # Run Post-Anonymous Apex Scripts

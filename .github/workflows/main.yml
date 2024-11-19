@@ -95,7 +95,7 @@ jobs:
             TEST_LEVEL="${{ github.event.inputs.TEST_LEVEL }}"
             echo "Using test level: $TEST_LEVEL"
             
-            TEST_LEVEL = "RunSpecifiedTests"
+            TEST_LEVEL="RunSpecifiedTests"
 
             if [ $TEST_LEVEL = "RunSpecifiedTests" ]; then
               export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(" ")' -r)

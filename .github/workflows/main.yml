@@ -9,49 +9,43 @@ permissions:
   contents: write  # Grant permissions to push tags to the repository
 
 jobs:
-  setup:
-    name: Setup Environment
+  Deploy-PROD:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Code
+      # Checkout the code
+      - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
       
-      - name: Install Utilities
+      # Install utilities
+      - name: Install utilities
         run: |
           pip install yq
           xq --version
 
-      - name: Create Server Key File
+      # Create server key file
+      - name: Create server key file
         run: |
           openssl enc -nosalt -aes-256-cbc -d -in assets/server.key.enc -out assets/server.key -base64 -K "${{ secrets.DECRYPTION_KEY }}" -iv "${{ secrets.DECRYPTION_IV }}"
-          
-      - name: Install Salesforce CLI
-        run: |
-          sudo npm install @salesforce/cli --global
-          export PATH=$PATH:/usr/local/bin
-          echo "Salesforce CLI version:"
-          sf --version
 
-      - name: Install SGD Plugin
+      # Ensure Salesforce CLI is added to PATH
+      - name: Installing Salesforce CLI
+        run: sudo npm install @salesforce/cli --global
+      
+      # Install SGD
+      - name: Install SGD
         run: echo y | sf plugins install "sfdx-git-delta"
 
-  delta:
-    name: Generate Delta Package
-    runs-on: ubuntu-latest
-    needs: setup
-    outputs:
-      has_changes: ${{ steps.check_changes.outputs.has_changes }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Generate Delta
-        id: check_changes
+      # Authorization with DevHub
+      - name: Authorize DevHub
         run: |
+          sf org login jwt --clientid "${{ secrets.SF_CLIENT_ID }}" --username "${{ secrets.SF_CICD_USERNAME }}" --jwtkeyfile assets/server.key --instanceurl https://login.salesforce.com
+
+      # Delta deploy
+      - name: Delta deploy
+        run: | 
           git fetch --tags
           LATEST_TAG=$(git tag --list "PROD/*" --sort=-v:refname | head -n 1)
           echo "Using $LATEST_TAG"
@@ -59,67 +53,90 @@ jobs:
           echo "----Generating SFDX-Delta Folder----"
           mkdir -p Sfdx-Delta
           
+          # Copy modified files to Sfdx-Delta
           MODIFIED_FILES=$(git diff --name-only "$LATEST_TAG" HEAD)
           if [ -z "$MODIFIED_FILES" ]; then
               echo "No modified files found between $LATEST_TAG and HEAD."
-              echo "has_changes=false" >> $GITHUB_ENV
-          else
-              echo "has_changes=true" >> $GITHUB_ENV
+              exit 0
           fi
+          for FILE in $MODIFIED_FILES; do
+            if [ -f "$FILE" ]; then
+              mkdir -p "Sfdx-Delta/$(dirname "$FILE")"
+              cp "$FILE" "Sfdx-Delta/$FILE"
+            else
+              echo "Skipping $FILE as it is not a regular file."
+            fi
+          done
 
           sf sgd source delta --from $LATEST_TAG --output Sfdx-Delta/ --generate-delta
           
           echo "--- package.xml generated with added and modified metadata ---"
           cat Sfdx-Delta/package/package.xml
 
-      - name: Set Output
-        run: echo "::set-output name=has_changes::${{ env.has_changes }}"
+          # Check if deployment is needed
+          echo "flag=false" >> $GITHUB_ENV
+          if grep -q '<types>' ./Sfdx-Delta/package/package.xml; then
+            echo "---Checking for Pre-DestructiveChanges----"
+            if [ -d Sfdx-Delta/scripts/destructiveChanges/pre ]; then
+              echo "---Starting with Pre-destructive Changes-----"
+              sf project deploy start --post-destructive-changes Sfdx-Delta/scripts/destructiveChanges/pre/destructiveChanges.xml --manifest Sfdx-Delta/scripts/destructiveChanges/pre/destructiveChanges.xml -o ${{ secrets.SF_CICD_USERNAME }}
+            else
+              echo "----No Pre-DestructiveChanges found----"
+            fi
 
-  deploy:
-    name: Deploy to Salesforce
-    runs-on: ubuntu-latest
-    needs: delta
-    if: needs.delta.outputs.has_changes == 'true'
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+            echo "Changes detected, preparing deployment..."
+            # Handle Apex Test Classes based on TEST_LEVEL            
+            TEST_LEVEL="RunSpecifiedTests"
+            echo "Using test level: $TEST_LEVEL"
+            if [ $TEST_LEVEL = "RunSpecifiedTests" ]; then
+              export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(" ")' -r)
+              echo "Tests: $APEX_CLASSES"
+              sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -l RunSpecifiedTests -o ${{ secrets.SF_CICD_USERNAME }} --tests $APEX_CLASSES
+            elif [ $TEST_LEVEL = "RunLocalTests" ]; then
+              echo "--- Running all local tests ---"
+              sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -l RunLocalTests -o ${{ secrets.SF_CICD_USERNAME }}
+            else
+              echo "--- Skipping tests (NoTestRun) ---"
+              sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -l NoTestRun -o ${{ secrets.SF_CICD_USERNAME }}
+            fi
 
-      - name: Deploy to Salesforce
-        run: |
-          echo "---Checking for Pre-DestructiveChanges----"
-          if [ -d Sfdx-Delta/scripts/destructiveChanges/pre ]; then
-            echo "---Starting with Pre-destructive Changes-----"
-            sf project deploy start --post-destructive-changes Sfdx-Delta/scripts/destructiveChanges/pre/destructiveChanges.xml --manifest Sfdx-Delta/scripts/destructiveChanges/pre/destructiveChanges.xml -o ${{ secrets.SF_CICD_USERNAME }}
-          fi
+            sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
 
-          echo "---Deploying Changes---"
-          TEST_LEVEL="RunSpecifiedTests"
-          if [ $TEST_LEVEL = "RunSpecifiedTests" ]; then
-            export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(" ")' -r)
-            sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -l RunSpecifiedTests -o ${{ secrets.SF_CICD_USERNAME }} --tests $APEX_CLASSES
-          elif [ $TEST_LEVEL = "RunLocalTests" ]; then
-            sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -l RunLocalTests -o ${{ secrets.SF_CICD_USERNAME }}
+            # Run Post-Anonymous Apex Scripts
+            if [ -d Sfdx-Delta/scripts/apex/post ]; then
+              echo "----Running Post-Anonymous Apex Scripts----"
+              for filename in Sfdx-Delta/scripts/apex/post/*.apex; do
+                if [ -f "$filename" ]; then
+                  echo "Executing $filename ..."
+                  sf apex run --file "$filename" -o ${{ secrets.SF_CICD_USERNAME }}
+                  if [ $? -ne 0 ]; then
+                    echo "Error: Failed to execute $filename"
+                    exit 1
+                  fi
+                fi
+              done
+            else
+              echo "No post-anonymous scripts found."
+            fi
+            
+            # Run Post destructiveChanges
+            if [ -d Sfdx-Delta/scripts/destructiveChanges/post ]; then
+              echo "---Starting with Post-destructive Changes-----"
+              sf project deploy start --post-destructive-changes Sfdx-Delta/scripts/destructiveChanges/post/destructiveChanges.xml --manifest Sfdx-Delta/scripts/destructiveChanges/post/destructiveChanges.xml -o ${{ secrets.SF_CICD_USERNAME }}
+            else
+              echo "----No Post-DestructiveChanges found----"
+            fi
+            echo "flag=true" >> $GITHUB_ENV
           else
-            sf project deploy start --source-dir Sfdx-Delta/force-app -w 30 -l NoTestRun -o ${{ secrets.SF_CICD_USERNAME }}
+            echo "----No Changes Found, Skipping the Deployment----"
           fi
 
-          sf project deploy report --use-most-recent -o ${{ secrets.SF_CICD_USERNAME }} --wait 120
+          # Cleanup
+          rm -rf Sfdx-Delta
 
-          echo "---Handling Post-DestructiveChanges---"
-          if [ -d Sfdx-Delta/scripts/destructiveChanges/post ]; then
-            sf project deploy start --post-destructive-changes Sfdx-Delta/scripts/destructiveChanges/post/destructiveChanges.xml --manifest Sfdx-Delta/scripts/destructiveChanges/post/destructiveChanges.xml -o ${{ secrets.SF_CICD_USERNAME }}
-          fi
-
-  tag:
-    name: Tag and Push
-    runs-on: ubuntu-latest
-    needs: deploy
-    if: needs.delta.outputs.has_changes == 'true'
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Create and Push Tag
+      # Add Tag on Success
+      - name: Tag and Push
+        if: env.flag == 'true'
         run: |
           git fetch --tags
           LATEST_TAG=$(git tag --list "PROD/*" --sort=-v:refname | head -n 1)
@@ -130,6 +147,7 @@ jobs:
             TAG_NAME="PROD/$((TAG_NUMBER + 1))"
           fi
 
+          echo "Creating new tag: $TAG_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG_NAME" -m "Deployed to PROD"

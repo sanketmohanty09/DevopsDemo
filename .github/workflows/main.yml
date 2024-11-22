@@ -28,7 +28,11 @@ jobs:
           openssl enc -nosalt -aes-256-cbc -d -in assets/server.key.enc -out assets/server.key -base64 -K "${{ secrets.DECRYPTION_KEY }}" -iv "${{ secrets.DECRYPTION_IV }}"
           
       - name: Install Salesforce CLI
-        run: sudo npm install @salesforce/cli --global
+        run: |
+          sudo npm install @salesforce/cli --global
+          export PATH=$PATH:/usr/local/bin
+          echo "Salesforce CLI version:"
+          sf --version
 
       - name: Install SGD Plugin
         run: echo y | sf plugins install "sfdx-git-delta"

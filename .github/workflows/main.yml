@@ -9,41 +9,49 @@ permissions:
   contents: write  # Grant permissions to push tags to the repository
 
 jobs:
-  Deploy-PROD:
+  checkout:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the code
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      
-      # Install utilities
+
+  install-utilities:
+    runs-on: ubuntu-latest
+    needs: checkout
+
+    steps:
       - name: Install utilities
         run: |
           pip install yq
           xq --version
 
-      # Create server key file
+  setup-salesforce:
+    runs-on: ubuntu-latest
+    needs: install-utilities
+
+    steps:
       - name: Create server key file
         run: |
           openssl enc -nosalt -aes-256-cbc -d -in assets/server.key.enc -out assets/server.key -base64 -K "${{ secrets.DECRYPTION_KEY }}" -iv "${{ secrets.DECRYPTION_IV }}"
 
-      # Ensure Salesforce CLI is added to PATH
       - name: Installing Salesforce CLI
         run: sudo npm install @salesforce/cli --global
       
-      # Install SGD
       - name: Install SGD
         run: echo y | sf plugins install "sfdx-git-delta"
 
-      # Authorization with DevHub
       - name: Authorize DevHub
         run: |
           sf org login jwt --clientid "${{ secrets.SF_CLIENT_ID }}" --username "${{ secrets.SF_CICD_USERNAME }}" --jwtkeyfile assets/server.key --instanceurl https://login.salesforce.com
 
-      # Delta deploy
+  delta-deploy:
+    runs-on: ubuntu-latest
+    needs: setup-salesforce
+
+    steps:
       - name: Delta deploy
         run: | 
           git fetch --tags
@@ -86,7 +94,7 @@ jobs:
 
             echo "Changes detected, preparing deployment..."
             # Handle Apex Test Classes based on TEST_LEVEL            
-            TEST_LEVEL="RunSpecifiedTests"
+            TEST_LEVEL="NoTestRun"
             echo "Using test level: $TEST_LEVEL"
             if [ $TEST_LEVEL = "RunSpecifiedTests" ]; then
               export APEX_CLASSES=$(xq . < SpecifiedTest.xml | jq '.Package.types | [.] | flatten | map(select(.name=="ApexClass")) | .[] | .members | [.] | flatten | map(select(. | index("*") | not)) | unique | join(" ")' -r)
@@ -134,7 +142,11 @@ jobs:
           # Cleanup
           rm -rf Sfdx-Delta
 
-      # Add Tag on Success
+  tag-and-push:
+    runs-on: ubuntu-latest
+    needs: delta-deploy
+
+    steps:
       - name: Tag and Push
         if: env.flag == 'true'
         run: |

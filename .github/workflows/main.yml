@@ -37,6 +37,8 @@ jobs:
     name: Generate Delta Package
     runs-on: ubuntu-latest
     needs: setup
+    outputs:
+      has_changes: ${{ steps.check_changes.outputs.has_changes }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -44,6 +46,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate Delta
+        id: check_changes
         run: |
           git fetch --tags
           LATEST_TAG=$(git tag --list "PROD/*" --sort=-v:refname | head -n 1)
@@ -52,37 +55,27 @@ jobs:
           echo "----Generating SFDX-Delta Folder----"
           mkdir -p Sfdx-Delta
           
-          # Copy modified files to Sfdx-Delta
           MODIFIED_FILES=$(git diff --name-only "$LATEST_TAG" HEAD)
           if [ -z "$MODIFIED_FILES" ]; then
               echo "No modified files found between $LATEST_TAG and HEAD."
-              exit 0
+              echo "has_changes=false" >> $GITHUB_ENV
+          else
+              echo "has_changes=true" >> $GITHUB_ENV
           fi
-          for FILE in $MODIFIED_FILES; do
-            if [ -f "$FILE" ]; then
-              mkdir -p "Sfdx-Delta/$(dirname "$FILE")"
-              cp "$FILE" "Sfdx-Delta/$FILE"
-            else
-              echo "Skipping $FILE as it is not a regular file."
-            fi
-          done
 
           sf sgd source delta --from $LATEST_TAG --output Sfdx-Delta/ --generate-delta
           
           echo "--- package.xml generated with added and modified metadata ---"
           cat Sfdx-Delta/package/package.xml
 
-          # Pass flag for next steps
-          echo "flag=false" >> $GITHUB_ENV
-          if grep -q '<types>' ./Sfdx-Delta/package/package.xml; then
-            echo "flag=true" >> $GITHUB_ENV
-          fi
+      - name: Set Output
+        run: echo "::set-output name=has_changes::${{ env.has_changes }}"
 
   deploy:
     name: Deploy to Salesforce
     runs-on: ubuntu-latest
     needs: delta
-    if: env.flag == 'true'
+    if: needs.delta.outputs.has_changes == 'true'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -117,7 +110,7 @@ jobs:
     name: Tag and Push
     runs-on: ubuntu-latest
     needs: deploy
-    if: env.flag == 'true'
+    if: needs.delta.outputs.has_changes == 'true'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3

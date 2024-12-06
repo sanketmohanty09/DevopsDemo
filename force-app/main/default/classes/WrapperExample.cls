@@ -3,4 +3,3 @@ public with sharing class WrapperExample {
     public String street;
     public String dogsName;
 }
-

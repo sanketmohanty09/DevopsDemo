@@ -75,6 +75,8 @@ jobs:
 
           # Check if deployment is needed
           echo "flag=false" >> $GITHUB_ENV
+
+          #Checking for Pre-Destructive Changes
           if grep -q '<types>' ./Sfdx-Delta/package/package.xml; then
             echo "---Checking for Pre-DestructiveChanges----"
             if [ -d Sfdx-Delta/scripts/destructiveChanges/pre ]; then
@@ -83,6 +85,24 @@ jobs:
             else
               echo "----No Pre-DestructiveChanges found----"
             fi
+
+            # Run Pre-Anonymous Apex Scripts
+            if [ -d Sfdx-Delta/scripts/apex/pre ]; then
+              echo "----Running Pre-Anonymous Apex Scripts----"
+              for filename in Sfdx-Delta/scripts/apex/pre/*.apex; do
+                if [ -f "$filename" ]; then
+                  echo "Executing $filename ..."
+                  sf apex run --file "$filename" -o ${{ secrets.SF_CICD_USERNAME }}
+                  if [ $? -ne 0 ]; then
+                    echo "Error: Failed to execute $filename"
+                    exit 1
+                  fi
+                fi
+              done
+            else
+              echo "No pre-anonymous scripts found."
+            fi
+
 
             echo "Changes detected, preparing deployment..."
             # Handle Apex Test Classes based on TEST_LEVEL            

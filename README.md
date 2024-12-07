@@ -1,4 +1,4 @@
-# Salesforce Deployment to PROD
+# Salesforce Deployment
 
 This repository contains the GitHub Actions workflow to automate the deployment process to the Salesforce production environment. The workflow handles various stages, including authorization, delta deployment, and post-deployment tasks.
 
